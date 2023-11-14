@@ -1,0 +1,164 @@
+using Kompas6API5;
+using Kompas6Constants;
+using KompasAPI7;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Printing;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using System.IO;
+
+
+namespace PrintCompas
+{
+    internal class Program
+    {
+        static string tempPath = "C:\\DiskD\\temp";
+        static string archivePath = "P:\\ОГТ\\5. Конструкторское бюро\\1. Архив КБ ОГТ";
+        static string activePrinter = "Microsoft Print to PDF";
+        static string libraryPath = "C:\\Users\\bikbov-da\\source\\repos\\PrintCompas1\\PrintCompas1\\Pdf2d.dll";
+        //public static string tempSavePath = "C:\\DiskD\\123.pdf";
+        static void Main(string[] args)
+        {
+            // var form = new Form1(); form.ShowDialog();
+
+            PutStampOGT();
+            ConvertToJPG();
+            DeleteStamp();
+            PrintDoc();
+            
+        }
+
+        static void ConvertToJPG() //работает, из компаса в жэпэг
+        {
+            KompasObject kompas = (KompasObject)Marshal.GetActiveObject("KOMPAS.Application.5");
+            Document2D Document = (Document2D)kompas.ActiveDocument2D();
+            RasterFormatParam rasterFormatParam = (RasterFormatParam)Document.RasterFormatParam();
+            Document.SaveAsToRasterFormat(tempPath, rasterFormatParam);
+        }
+        public static void PutStampOGT()
+        {
+            double posX = 0;
+            double delX = 30;
+            double delX2 = 0;
+            double koef = 1.414;
+            double delY = 0;
+            DateTime dateTime = DateTime.Today;
+
+            IApplication application = (IApplication)Marshal.GetActiveObject("KOMPAS.Application.7");
+            IKompasDocument kompasDoc = application.ActiveDocument;
+            ILayoutSheets sheets = (ILayoutSheets)kompasDoc.LayoutSheets;
+
+            KompasObject kompas = (KompasObject)Marshal.GetActiveObject("KOMPAS.Application.5");
+            Document2D Document = (Document2D)kompas.ActiveDocument2D();
+            ViewParam viewParam = (ViewParam)kompas.GetParamStruct(8);
+            Document.ksCreateSheetView(viewParam, 99);
+            Document.ksOpenView(99);
+
+            
+
+
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                
+
+                ISheetFormat sheetFormat1 = (ISheetFormat)sheets[i].Format;
+                ILayoutSheet sheet = (ILayoutSheet)sheets[i];
+
+                string formstr = sheetFormat1.Format.ToString();
+                int form = int.Parse(formstr[formstr.Length - 1].ToString());
+
+                switch (form)
+                {
+                    case 4:
+
+                        posX += 210 + 210 * (koef - 1) * (sheetFormat1.VerticalOrientation ? 0 : 1) * (sheetFormat1.FormatMultiplicity != 1 ? 0 : 1) + ((sheetFormat1.FormatMultiplicity - 1) * 210);
+                        break;
+                    case 3:
+                        posX += 297 + 297 * (koef - 1) * (sheetFormat1.VerticalOrientation ? 0 : 1) * (sheetFormat1.FormatMultiplicity != 1 ? 0 : 1) + ((sheetFormat1.FormatMultiplicity - 1) * 297);
+                        break;
+                    case 2:
+                        posX += 420 + 420 * (koef - 1) * (sheetFormat1.VerticalOrientation ? 0 : 1) * (sheetFormat1.FormatMultiplicity != 1 ? 0 : 1) + ((sheetFormat1.FormatMultiplicity - 1) * 420);
+                        break;
+                    case 1:
+                        posX += 594 + 594 * (koef - 1) * (sheetFormat1.VerticalOrientation ? 0 : 1); // + ((sheetFormat1.FormatMultiplicity - 1) * 594);
+                        break;
+                    case 0:
+                        posX += 841 + 841 * (koef - 1) * (sheetFormat1.VerticalOrientation ? 0 : 1); // + ((sheetFormat1.FormatMultiplicity - 1) * 841);
+                        break;
+                }
+
+                if (sheet.LayoutStyleNumber == 2) { delX2 = 10; delY = 40; }
+                else if (sheet.LayoutStyleNumber == 1) delX2 = delY = 0;
+
+                Document.ksText(posX - delX - delX2, 56.5 - delY, 0, 3, 0, 0x40, "Распечатано из");
+                Document.ksText(posX - delX - delX2, 51.5 - delY, 0, 3, 0, 0x40, "Архива КБ ОГТ\n");
+                Document.ksText(posX - delX - delX2, 46.5 - delY, 0, 3, 0, 0x40, dateTime.ToShortDateString());
+            }
+        }
+        public static void DeleteStamp()
+        {
+            KompasObject kompas = (KompasObject)Marshal.GetActiveObject("KOMPAS.Application.5");
+            Document2D Document = (Document2D)kompas.ActiveDocument2D();
+
+            ViewParam viewParam = (ViewParam)kompas.GetParamStruct(8);
+            Document.ksDeleteObj(Document.ksGetViewReference(99));
+
+        }
+        public static bool CheckDraft()
+        {
+            IApplication application = (IApplication)Marshal.GetActiveObject("KOMPAS.Application.7");
+            IKompasDocument kompasDoc = application.ActiveDocument;
+            IDrawingDocument doc2D = (IDrawingDocument)kompasDoc;
+
+            if (doc2D.PathName.Contains(archivePath))
+                return !(doc2D.PathName.Contains('+'));
+            else return false;
+        }
+        public static void PrintDoc() // 2 вар
+        {
+            PrintDialog printDlg = new PrintDialog();
+            PrintDocument printDoc = new PrintDocument();
+            PrintPreviewDialog printPreviewDialog = new PrintPreviewDialog();
+            printDoc.DocumentName = tempPath;
+
+            printDoc.PrintPage += (sender, args) =>
+            {
+                Image image = System.Drawing.Image.FromFile(tempPath);
+                args.Graphics.DrawImage(image, 0, 0);
+            };
+
+            printDoc.PrinterSettings.PrinterName = "Microsoft Print to PDF";
+            printPreviewDialog.Document = printDoc;
+            printDlg.Document = printDoc;
+
+            printDlg.AllowSelection = true;
+            printDlg.AllowSomePages = true;
+
+            /*if (printDlg.ShowDialog() == DialogResult.OK)
+            {
+                printPreviewDialog.ShowDialog();
+                printDoc.Print();
+            }*/
+            printPreviewDialog.ShowDialog();
+            printDoc.Print();
+
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    } 
+}   
